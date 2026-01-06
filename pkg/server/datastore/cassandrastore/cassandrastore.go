@@ -12,48 +12,48 @@ import (
 
 // AppendBundle append bundle contents to the existing bundle (by trust domain). If no existing one is present, create it.
 func (ds *Plugin) AppendBundle(ctx context.Context, b *common.Bundle) (bundle *common.Bundle, err error) {
-	return nil, nil
+	return appendBundle(ctx, ds.session, b, ds.log)
 }
 
 // CountBundles can be used to count all existing bundles.
 func (ds *Plugin) CountBundles(ctx context.Context) (count int32, err error) {
-	return 0, nil
+	return countBundles(ctx, ds.session)
 }
 
 // CreateBundle stores the given bundle
 func (ds *Plugin) CreateBundle(ctx context.Context, b *common.Bundle) (bundle *common.Bundle, err error) {
-	return nil, nil
+	return createBundle(ctx, ds.session, b)
 }
 
 // DeleteBundle deletes the bundle with the matching TrustDomain. Any CACert data passed is ignored.
 func (ds *Plugin) DeleteBundle(ctx context.Context, trustDomainID string, mode datastore.DeleteMode) (err error) {
-	return nil
+	return deleteBundle(ctx, ds.session, trustDomainID, mode)
 }
 
 // FetchBundle returns the bundle matching the specified Trust Domain.
 func (ds *Plugin) FetchBundle(ctx context.Context, trustDomainID string) (resp *common.Bundle, err error) {
-	return nil, nil
+	return fetchBundle(ctx, ds.session, trustDomainID)
 }
 
 // ListBundles can be used to fetch all existing bundles.
 func (ds *Plugin) ListBundles(ctx context.Context, req *datastore.ListBundlesRequest) (resp *datastore.ListBundlesResponse, err error) {
-	return nil, nil
+	return listBundles(ctx, ds.session, req)
 }
 
 // PruneBundle removes expired certs and keys from a bundle
 func (ds *Plugin) PruneBundle(ctx context.Context, trustDomainID string, expiresBefore time.Time) (changed bool, err error) {
-	return false, nil
+	return pruneBundle(ctx, ds.session, trustDomainID, expiresBefore, ds.log)
 }
 
 // SetBundle sets bundle contents. If no bundle exists for the trust domain, it is created.
 func (ds *Plugin) SetBundle(ctx context.Context, b *common.Bundle) (bundle *common.Bundle, err error) {
-	return nil, nil
+	return setBundle(ctx, ds.session, b)
 }
 
 // UpdateBundle updates an existing bundle with the given CAs. Overwrites any
 // existing certificates.
 func (ds *Plugin) UpdateBundle(ctx context.Context, b *common.Bundle, mask *common.BundleMask) (bundle *common.Bundle, err error) {
-	return nil, nil
+	return updateBundle(ctx, ds.session, b, mask)
 }
 
 // TaintX509CAByKey taints an X.509 CA signed using the provided public key
