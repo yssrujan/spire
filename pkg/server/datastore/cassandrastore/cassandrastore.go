@@ -58,22 +58,22 @@ func (ds *Plugin) UpdateBundle(ctx context.Context, b *common.Bundle, mask *comm
 
 // TaintX509CAByKey taints an X.509 CA signed using the provided public key
 func (ds *Plugin) TaintX509CA(ctx context.Context, trustDoaminID string, subjectKeyIDToTaint string) error {
-	return nil
+	return taintX509CA(ctx, ds.session, trustDoaminID, subjectKeyIDToTaint)
 }
 
 // RevokeX509CA removes a Root CA from the bundle
 func (ds *Plugin) RevokeX509CA(ctx context.Context, trustDoaminID string, subjectKeyIDToRevoke string) error {
-	return nil
+	return revokeX509CA(ctx, ds.session, trustDoaminID, subjectKeyIDToRevoke)
 }
 
 // TaintJWTKey taints a JWT Authority key
 func (ds *Plugin) TaintJWTKey(ctx context.Context, trustDoaminID string, authorityID string) (*common.PublicKey, error) {
-	return nil, nil
+	return taintJWTKey(ctx, ds.session, trustDoaminID, authorityID)
 }
 
 // RevokeJWTAuthority removes JWT key from the bundle
 func (ds *Plugin) RevokeJWTKey(ctx context.Context, trustDoaminID string, authorityID string) (*common.PublicKey, error) {
-	return nil, nil
+	return revokeJWTKey(ctx, ds.session, trustDoaminID, authorityID)
 }
 
 // CreateAttestedNode stores the given attested node
