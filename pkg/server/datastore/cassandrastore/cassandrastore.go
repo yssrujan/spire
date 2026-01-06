@@ -2,6 +2,7 @@ package cassandrastore
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -254,27 +255,27 @@ func (ds *Plugin) FetchRegistrationEntryEvent(ctx context.Context, eventID uint)
 // CreateJoinToken takes a Token message and stores it
 func (ds *Plugin) CreateJoinToken(ctx context.Context, token *datastore.JoinToken) (err error) {
 	if token == nil || token.Token == "" || token.Expiry.IsZero() {
-		return nil
+		return errors.New("token and expiry are required")
 	}
 
-	return nil
+	return createJoinToken(ctx, ds.session, token)
 }
 
 // FetchJoinToken takes a Token message and returns one, populating the fields
 // we have knowledge of
 func (ds *Plugin) FetchJoinToken(ctx context.Context, token string) (resp *datastore.JoinToken, err error) {
-	return nil, nil
+	return fetchJoinToken(ctx, ds.session, token)
 }
 
 // DeleteJoinToken deletes the given join token
 func (ds *Plugin) DeleteJoinToken(ctx context.Context, token string) (err error) {
-	return nil
+	return deleteJoinToken(ctx, ds.session, token)
 }
 
 // PruneJoinTokens takes a Token message, and deletes all tokens which have expired
 // before the date in the message
 func (ds *Plugin) PruneJoinTokens(ctx context.Context, expiry time.Time) (err error) {
-	return nil
+	return pruneJoinTokens(ctx, ds.session, expiry)
 }
 
 // CreateFederationRelationship creates a new federation relationship. If the bundle endpoint
