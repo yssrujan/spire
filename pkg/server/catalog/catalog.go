@@ -23,6 +23,7 @@ import (
 	km_telemetry "github.com/spiffe/spire/pkg/common/telemetry/server/keymanager"
 	"github.com/spiffe/spire/pkg/server/cache/dscache"
 	"github.com/spiffe/spire/pkg/server/datastore"
+	"github.com/spiffe/spire/pkg/server/datastore/cassandrastore"
 	ds_sql "github.com/spiffe/spire/pkg/server/datastore/sqlstore"
 	"github.com/spiffe/spire/pkg/server/hostservice/agentstore"
 	"github.com/spiffe/spire/pkg/server/hostservice/identityprovider"
@@ -87,14 +88,21 @@ type Repository struct {
 }
 
 type dsConfigurer struct {
-	ds *ds_sql.Plugin
+	ds  *ds_sql.Plugin
+	dsc *cassandrastore.Plugin
 }
 
 func (c *dsConfigurer) Configure(ctx context.Context, _ catalog.CoreConfig, configuration string) error {
+	if c.dsc != nil {
+		return c.dsc.Configure(ctx, configuration)
+	}
 	return c.ds.Configure(ctx, configuration)
 }
 
 func (c *dsConfigurer) Validate(ctx context.Context, coreConfig catalog.CoreConfig, configuration string) (*configv1.ValidateResponse, error) {
+	if c.dsc != nil {
+		return c.dsc.Validate(ctx, coreConfig, configuration)
+	}
 	return c.ds.Validate(ctx, coreConfig, configuration)
 }
 
@@ -160,12 +168,11 @@ func Load(ctx context.Context, config Config) (_ *Repository, err error) {
 	// Strip out the Datastore plugin configuration and load the SQL plugin
 	// directly. This allows us to bypass gRPC and get rid of response limits.
 	dataStoreConfigs, pluginConfigs := config.PluginConfigs.FilterByType(dataStoreType)
-	sqlDataStore, err := loadSQLDataStore(ctx, config, coreConfig, dataStoreConfigs)
+	dsRaw, dsCloser, err := loadDataStore(ctx, config, coreConfig, dataStoreConfigs)
 	if err != nil {
 		return nil, err
 	}
-	repo.dsCloser = sqlDataStore
-
+	repo.dsCloser = dsCloser
 	repo.catalog, err = catalog.Load(ctx, catalog.Config{
 		Log:           config.Log,
 		CoreConfig:    coreConfig,
@@ -180,7 +187,7 @@ func Load(ctx context.Context, config Config) (_ *Repository, err error) {
 		return nil, err
 	}
 
-	var dataStore datastore.DataStore = sqlDataStore
+	var dataStore datastore.DataStore = dsRaw
 	_ = config.HealthChecker.AddCheck("catalog.datastore", &datastore.Health{
 		DataStore: dataStore,
 	})
@@ -251,37 +258,55 @@ func ValidateConfig(ctx context.Context, config Config) (pluginNotes map[string]
 	return pluginNotes, err
 }
 
-func loadSQLDataStore(ctx context.Context, config Config, coreConfig catalog.CoreConfig, datastoreConfigs catalog.PluginConfigs) (*ds_sql.Plugin, error) {
+func loadDataStore(ctx context.Context, config Config, coreConfig catalog.CoreConfig, datastoreConfigs catalog.PluginConfigs) (datastore.DataStore, io.Closer, error) {
 	switch {
 	case len(datastoreConfigs) == 0:
-		return nil, errors.New("expecting a DataStore plugin")
+		return nil, nil, errors.New("expecting a DataStore plugin")
 	case len(datastoreConfigs) > 1:
-		return nil, errors.New("only one DataStore plugin is allowed")
+		return nil, nil, errors.New("only one DataStore plugin is allowed")
 	}
 
-	sqlConfig := datastoreConfigs[0]
+	dsConfig := datastoreConfigs[0]
 
-	if sqlConfig.Name != ds_sql.PluginName {
-		return nil, fmt.Errorf("pluggability for the DataStore is deprecated; only the built-in %q plugin is supported", ds_sql.PluginName)
+	if dsConfig.Name != ds_sql.PluginName && dsConfig.Name != cassandrastore.PluginName {
+		return nil, nil, fmt.Errorf("pluggability for the DataStore is deprecated; only the built-in %q plugin is supported", ds_sql.PluginName)
 	}
-	if sqlConfig.IsExternal() {
-		return nil, fmt.Errorf("pluggability for the DataStore is deprecated; only the built-in %q plugin is supported", ds_sql.PluginName)
+	if dsConfig.IsExternal() {
+		return nil, nil, fmt.Errorf("pluggability for the DataStore is deprecated; only the built-in %q plugin is supported", ds_sql.PluginName)
 	}
-	if sqlConfig.DataSource == nil {
-		sqlConfig.DataSource = catalog.FixedData("")
+	if dsConfig.DataSource == nil {
+		dsConfig.DataSource = catalog.FixedData("")
 	}
 
-	dsLog := config.Log.WithField(telemetry.SubsystemName, sqlConfig.Name)
+	dsLog := config.Log.WithField(telemetry.SubsystemName, dsConfig.Name)
+	if dsConfig.Name == cassandrastore.PluginName {
+		return loadCassandraDataStore(ctx, dsLog, coreConfig, dsConfig)
+	}
 	ds := ds_sql.New(dsLog)
 	dsConf := &dsConfigurer{ds: ds}
-	if _, err := catalog.ConfigurePlugin(ctx, coreConfig, dsConf, sqlConfig.DataSource, ""); err != nil {
-		return nil, err
+	if _, err := catalog.ConfigurePlugin(ctx, coreConfig, dsConf, dsConfig.DataSource, ""); err != nil {
+		return nil, nil, err
 	}
 
-	if sqlConfig.DataSource.IsDynamic() {
+	if dsConfig.DataSource.IsDynamic() {
 		config.Log.Warn("DataStore is not reconfigurable even with a dynamic data source")
 	}
 
 	config.Log.WithField(telemetry.Reconfigurable, false).Info("Configured DataStore")
-	return ds, nil
+	return ds, ds, nil
+}
+
+func loadCassandraDataStore(ctx context.Context, log logrus.FieldLogger, coreConfig catalog.CoreConfig, dsConfig catalog.PluginConfig) (datastore.DataStore, io.Closer, error) {
+	dsc := cassandrastore.New(log)
+	dsConf := &dsConfigurer{dsc: dsc}
+	if _, err := catalog.ConfigurePlugin(ctx, coreConfig, dsConf, dsConfig.DataSource, ""); err != nil {
+		return nil, nil, err
+	}
+
+	if dsConfig.DataSource.IsDynamic() {
+		log.Warn("DataStore is not reconfigurable even with a dynamic data source")
+	}
+
+	log.WithField(telemetry.Reconfigurable, false).Info("Configured DataStore")
+	return dsc, dsc, nil
 }
